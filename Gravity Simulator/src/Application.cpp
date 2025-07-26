@@ -1,9 +1,15 @@
+/*
+    Author: Harish Babu
+*/
+
 #include "imgui.h"
 #include "imgui-SFML.h"
 #include <SFML/Graphics.hpp>
 #include <iostream>
 #include <string>
 #include <windows.h>
+#include <algorithm>
+#include <cctype>
 
 const int SCREEN_WIDTH = 1000;
 const int SCREEN_HEIGHT = 800;
@@ -55,10 +61,10 @@ public:
         //std::cout << obj_name << " " << shape.getPosition().x << " " << shape.getPosition().y << std::endl;
     }
 
-    void ApplyUniversalGravity(Object _objects[], int len_objects) {
+    void ApplyUniversalGravity(std::vector<Object> &_objects) {
         sf::Vector2f resultant_force = sf::Vector2f(0, 0);
 
-        for (int i = 0; i < len_objects; i++) {
+        for (int i = 0; i < _objects.size(); i++) {
             if (_objects[i].obj_name != obj_name) {
                 sf::Vector2f direction_force = _objects[i].shape.getPosition() - shape.getPosition();
 
@@ -74,7 +80,10 @@ public:
         acceleration = resultant_force / (float)mass;
     }
 
-    void UpdateGui() {
+    void UpdateGui(std::vector<Object> &_objects) {
+        if (obj_name.empty()) return;
+        bool broken = false;
+
         ImGui::Begin(obj_name.c_str());
 
         ImGui::SeparatorText("Edit Properties");
@@ -87,15 +96,40 @@ public:
         ImGui::SliderInt("Blue", &color_b, 0, 255);
         ImGui::Text("\n");
 
-        ImGui::SliderFloat("Mass", &mass, 10.0f, 100000000000000.0f);
+        ImGui::SeparatorText("Mass");
+        ImGui::SliderFloat(" ", &mass, 10.0f, 100000000000000.0f);
+        ImGui::Text("\n");
 
+        static int clicked = 0;
 
-        ImGui::End();
+        if (ImGui::Button("Delete")) {
+            clicked++;
+        }
+        if (clicked & 1) {
+            for (int i = 0; i < _objects.size(); i++) {
+                if (_objects.size() == 1) {
+                    ImGui::SameLine();
+                    ImGui::Text("At Least one Object has to exist in the world");
+                    break;
+                }
+
+                if (_objects[i].obj_name == obj_name) {
+                    std::cout << "Erase for: " << i << " | Size: " << _objects.size() << std::endl;
+                    _objects.erase(_objects.begin() + i);
+                    broken = true;
+                    ImGui::End();
+                    break;
+                }
+            }
+            clicked = 0;
+        }
+
+        if (!broken) ImGui::End();
     }
 };
 
 
-void ShowHelpGui(float *move_scr_speed) {
+void ShowHelpGui(float* move_scr_speed) {
     ImGui::Begin("How to move arround");
 
     ImGui::Text("Move Arround - Arrow Keys (or) WASD");
@@ -103,15 +137,120 @@ void ShowHelpGui(float *move_scr_speed) {
 
     ImGui::SeparatorText("Simulator Settings");
     ImGui::SliderFloat("Screen Move Speed", move_scr_speed, 10.0f, 100.0f);
-    
+
     ImGui::End();
+}
+
+std::string trim_erase_remove(std::string str) {
+    // Trim leading spaces
+    str.erase(str.begin(), std::find_if(str.begin(), str.end(), [](unsigned char ch) {
+        return !std::isspace(ch);
+        }));
+
+    // Trim trailing spaces
+    str.erase(std::find_if(str.rbegin(), str.rend(), [](unsigned char ch) {
+        return !std::isspace(ch);
+        }).base(), str.end());
+
+    return str;
+}
+
+void ShowAddGui(std::vector<Object> &_objects) {
+    ImGui::Begin("Add New Object");
+
+    static char _name[128];
+    ImGui::SeparatorText("Object Name (max 256 chars)");
+    ImGui::InputText(" ", _name, IM_ARRAYSIZE(_name));
+
+    static float _radius = 10.0f;
+    ImGui::SeparatorText("Object Radius");
+    ImGui::SliderFloat("  ", &_radius, 1.0f, 50.0f);
+
+    static int c_r = 100, c_g = 100, c_b = 100;
+    ImGui::SeparatorText("Object Color - RGB");
+    ImGui::SliderInt("Red", &c_r, 0.0f, 255.0f);
+    ImGui::SliderInt("Green", &c_g, 0.0f, 255.0f);
+    ImGui::SliderInt("Blue", &c_b, 0.0f, 255.0f);
+
+    static float _mass = 10000000;
+    ImGui::SeparatorText("Mass of Object");
+    ImGui::SliderFloat("Mass", &_mass, 10.0f, 100000000000000.0f);
+
+    static float init_pos_x = 500.f, init_pos_y = 500.f;
+    ImGui::SeparatorText("Initial Position");
+    ImGui::InputFloat("X", &init_pos_x, 1.0f, 10.f);
+    ImGui::InputFloat("Y", &init_pos_y, 1.0f, 10.f);
+
+    static float init_vel_x = 0, init_vel_y = -60.0f;
+    ImGui::SeparatorText("Initial Velocity vector");
+    ImGui::InputFloat("X ", &init_vel_x, 1.0f, 10.f);
+    ImGui::InputFloat("Y ", &init_vel_y, 1.0f, 10.f);
+
+    static int clicked = 0;
+    if (ImGui::Button("Create")) {
+        clicked++;
+    }
+    if (clicked & 1) {
+        ImGui::SameLine();
+
+        std::string obj_name_inp = _name;
+        obj_name_inp = trim_erase_remove(obj_name_inp);
+        bool can_create = true;
+
+        if (obj_name_inp.empty()) {
+            ImGui::Text("Please enter a name");
+            can_create = false;
+        }
+
+        for (Object obj: _objects) {
+            if (obj.obj_name == obj_name_inp && !obj_name_inp.empty()) {
+                ImGui::Text("This name, already exists");
+                can_create = false;
+            }
+        }
+
+        if (can_create) {
+            Object new_obj(
+                obj_name_inp,
+                _radius,
+                sf::Color(c_r, c_g, c_b),
+                sf::Vector2f(init_pos_x, init_pos_y),
+                _mass,
+                sf::Vector2f(init_vel_x, init_vel_y)
+            );
+
+            _objects.push_back(new_obj);
+
+            memset(_name, '\0', sizeof(_name));
+        }
+
+        clicked = 0;
+    }
+
+    ImGui::End();
+}
+
+void showCoordinatesTooltipGui(sf::Vector2f worldMousePos) {
+    if (!ImGui::IsAnyItemHovered() && !ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow)) {
+        ImGui::BeginTooltip();
+        ImGui::Text("Coordinates");
+        ImGui::Separator();
+        ImGui::Text("X: %.2f", worldMousePos.x);
+        ImGui::Text("Y: %.2f", worldMousePos.y);
+        ImGui::EndTooltip();
+    }
 }
 
 int main()
 {
-    sf::RenderWindow window(sf::VideoMode({ SCREEN_WIDTH, SCREEN_HEIGHT }), "Gravity Simulation!");
+    sf::RenderWindow window(sf::VideoMode({ SCREEN_WIDTH, SCREEN_HEIGHT }), "Gravity Simulation! By Harish Babu");
     ::ShowWindow(window.getNativeHandle(), SW_MAXIMIZE);
     ImGui::SFML::Init(window);
+
+    // set icon
+    sf::Image icon;
+    icon.loadFromFile("images/gravity-icon-1.jpg");
+    window.setIcon(icon);
 
     // define objects
     double some_mass = 10000000000000;
@@ -136,13 +275,9 @@ int main()
         sf::Vector2f(0, -init_speed)
     );
 
-    // put them in an array
-    int len_objects = 2;
-    Object objects[2] = {
-        obj1,
-        obj2,
-    };
-
+    // Store Objects as a dynamic array;
+    std::vector<Object> objects = { obj1, obj2 };
+    
     sf::Clock clock;
     sf::Clock imClock;
 
@@ -175,6 +310,7 @@ int main()
                 window.setView(curreView);
             }
 
+            // Moving around Viewport
             if (const auto* keyEve = event->getIf<sf::Event::KeyPressed>()) {
                 sf::Vector2f move_vec = sf::Vector2f(0,0);
                 sf::View curreView = window.getView();
@@ -198,22 +334,26 @@ int main()
         }
 
         deltaTime = clock.restart().asSeconds();
-
         ImGui::SFML::Update(window, imClock.restart());     
 
         // Some Extra GUI
         ShowHelpGui(&move_screen_speed);
+        ShowAddGui(objects);
+
+        sf::Vector2i mousePixelPos = sf::Mouse::getPosition(window);
+        sf::Vector2f worldMousePos = window.mapPixelToCoords(mousePixelPos);
+        showCoordinatesTooltipGui(worldMousePos);
 
         // Update Objects
-        for (int i = 0; i < len_objects; i++) {
-            objects[i].UpdateGui();
-            objects[i].ApplyUniversalGravity(objects, len_objects);
-            objects[i].ApplyMotion(deltaTime);
+        for (Object &obj: objects) {
+            obj.UpdateGui(objects);
+            obj.ApplyUniversalGravity(objects);
+            obj.ApplyMotion(deltaTime);
         }
 
         // Render Out All Stuff
         window.clear();
-        for (int i = 0; i < len_objects; i++) {
+        for (int i = 0; i < objects.size(); i++) {
             window.draw(objects[i].shape);
         }
         ImGui::SFML::Render(window);
