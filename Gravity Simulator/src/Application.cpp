@@ -114,7 +114,7 @@ public:
                 }
 
                 if (_objects[i].obj_name == obj_name) {
-                    std::cout << "Erase for: " << i << " | Size: " << _objects.size() << std::endl;
+                    //std::cout << "Erase for: " << i << " | Size: " << _objects.size() << std::endl;
                     _objects.erase(_objects.begin() + i);
                     broken = true;
                     ImGui::End();
